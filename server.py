@@ -2,7 +2,7 @@
 
 import socket
 import sys
-import handler
+from src import handler
 from time import ctime
 
 try:
