@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import socket
-import thread
 import sys
-from handler import *
+import handler
+from time import ctime
 
-HOST = ''
-PORT = int(sys.argv[1])
-BUFSIZE = 1024
-ADDR = (HOST, PORT)
+try:
+    HOST = ''
+    PORT = int(sys.argv[1])
+    ADDR = (HOST, PORT)
+except IndexError, e:
+    print "You need to specify port number"
+
+threads = []
 
 
 def close_socket(sock):
@@ -25,14 +29,17 @@ if __name__ == "__main__":
         while True:
             print "waiting for connection..."
             cli_sock, addr = server_sock.accept()
-            thread.start_new_thread(thread_handler, (cli_sock, addr))
+            th = handler.ThreadHandler(cli_sock, addr)
+            th.start()
+            threads.append(th)
+            # thread.start_new_thread(thread_handler, (cli_sock, addr))
 
     except EOFError, e:
-        print "[%s] %s" % (ctime(), e),
+        print "[%s] %s" % (ctime(), e)
     except KeyboardInterrupt, e:
-        print "[%s] %s" % (ctime(), e),
+        print "[%s] %s" % (ctime(), e)
     except socket.error, e:
-        print "[%s] %s" % (ctime(), e),
+        print "[%s] %s" % (ctime(), e)
     finally:
         close_socket(server_sock)
         print "Closing..."

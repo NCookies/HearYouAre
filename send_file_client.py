@@ -4,21 +4,23 @@ from socket import *
 from time import ctime
 import sys
 
-HOST = "10.42.0.139"
+HOST = "127.0.0.1"
 PORT = int(sys.argv[1])
 BUFSIZE = 1024
 ADDR = (HOST, PORT)
-# filename = sys.argv[2]
+filename = sys.argv[2]
 
 cli_sock = socket(AF_INET, SOCK_STREAM)
 cli_sock.connect(ADDR)
 
+f = open(filename, 'rb')
 try:
-    while True:
-        send_data = raw_input("> ")
-        if not send_data:
-            break
-        cli_sock.send(send_data)
+    cli_sock.send("/SENDFILE:")
+    cli_sock.recv(BUFSIZE)
+    file_data = f.read(BUFSIZE)
+    while file_data:
+        cli_sock.send(file_data)
+        file_data = f.read(BUFSIZE)
 
         recv_data = cli_sock.recv(BUFSIZE)
 
@@ -27,17 +29,11 @@ try:
         except ValueError:
             cmd = recv_data.split(":")[0]
 
-        if not recv_data:
-            break
-        if cmd == "/CONNCLOSE:":
-            print "Bye"
-            cli_sock.close()
-            exit(0)
-
         print "%s" % recv_data
 except EOFError as e:
     print "[%s] %s" % (ctime(), e)
 except KeyboardInterrupt as e:
     print "[%s] %s" % (ctime(), e)
 finally:
+    f.close()
     cli_sock.close()
