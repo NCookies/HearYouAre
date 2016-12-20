@@ -1,0 +1,10 @@
+*.db
+*.txt
+*.pyc
+
+.idea/
+test/
+
+sqlite_test.py
+mysql.py
+
