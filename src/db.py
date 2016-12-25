@@ -28,7 +28,6 @@ class DBHandler:
         conn 객체 생성
         :param db_path: 데이터베이스 파일 경로
         """
-        print db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
@@ -54,10 +53,15 @@ class DBHandler:
         if not mac:
             print "[%s][%s] There is no device registered" % (ctime(), nickname)
 
+        #
+        music_id = self.get_last_id_from_music(nickname)
+        if not music_id:
+            music_id = 1
+
         # 음악 및 앨범 파일 경로 지정
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
-        music_file_route = '{0}/music/{1}_{2}'.format(DB_PATH, mac, json_data['name'])
-        album_file_route = '{0}/album/{1}_{2}'.format(DB_PATH, mac, json_data['name'])
+        music_file_route = '{0}/music/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, json_data['name'])
+        album_file_route = '{0}/album/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, json_data['name'])
 
         try:
             cur = self.conn.cursor()
@@ -149,6 +153,19 @@ class DBHandler:
 
     def get_music_list(self):
         pass
+
+    def get_last_id_from_music(self, nickname):
+        try:
+            cur = self.conn.cursor()
+            select_sql = "select seq from sqlite_sequence where name='music'"
+            cur.execute(select_sql)
+
+        except sqlite3.Error as e:
+            print "[%s][%s] %s" % (ctime(), nickname, e)
+            print_error_line()
+            return 1
+
+        return cur.fetchone()[0]
 
 
 def print_error_line():
