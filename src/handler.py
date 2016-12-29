@@ -71,11 +71,13 @@ class ThreadHandler(threading.Thread):
                     # 람다 함수를 통해 클라이언트에게 메시지를 보낼 수 있음
                     if not self.dbh.check_nickname(
                             self.nickname, additional_data[0],
-                            additional_data[1],
-                            lambda msg: self.client_sock.send(make_message(msg))):
+                            additional_data[1]):
+                        self.client_sock.send(make_message("NICKNAME_FAIL"))
                         continue
 
                     # 닉네임을 MAC 주소와 함께 데이터베이스에 저장
+                    # insert or replace 를 하기 때문에 기본키가 중복되더라도
+                    # 새로운 닉네임을 덮어씌움
                     if self.dbh.register_device(additional_data[0], additional_data[1]):
                         self.nickname = additional_data[0]
                         self.client_sock.send(make_message("NICKNAME_OK"))

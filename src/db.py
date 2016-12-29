@@ -57,6 +57,7 @@ class DBHandler:
             data = json.loads(json_data, encoding="cp1252")
 
         print data
+        print type(data)
         # data = {"album": "안녕", "playtime": "fd", "singer": "sdf", "name": "sd"}
 
         mac = self.get_mac(nickname)
@@ -81,7 +82,7 @@ class DBHandler:
             insert_sql = "insert into music " \
                          "(device_mac, music_name, music_singer, music_album, " \
                          "music_playtime, music_file_route" \
-                         ", music_album_image_route, music_data)" \
+                         ", music_album_image_route, music_json_data)" \
                          "values (?, ?, ?, ?, ?, ?, ?, ?)"
             cur.execute(insert_sql, (mac, data['name'], data['singer'], data['album'],
                                      data['playtime'], music_file_route,
@@ -119,7 +120,7 @@ class DBHandler:
         self.conn.commit()
         return True
 
-    def check_nickname(self, ip, nickname, mac, send_msg):
+    def check_nickname(self, ip, nickname, mac):
         """
         :param ip: 닉네임이 서버에 적용되기 전의 디폴트 값
         :param nickname: 변경하고자 하는 닉네임
@@ -143,7 +144,7 @@ class DBHandler:
             # 겹치는 닉네임을 가지고 있는 디바이스의 맥주소가 다르다면
             else:
                 print "[%s][%s] It already exists." % (ctime(), ip)
-                send_msg("NICKNAME_FAIL")
+                # send_msg("NICKNAME_FAIL")
 
             return False
 
