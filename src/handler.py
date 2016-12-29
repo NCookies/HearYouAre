@@ -63,13 +63,16 @@ class ThreadHandler(threading.Thread):
 
                 elif cmd == "/REGISTER_NICKNAME":
                     # 리스트에 인자가 제대로 전달되었는지 확인
-                    if len(additional_data) != 2:
+                    if len(additional_data) < 2:
                         self.client_sock.send(make_message("NICKNAME_FAIL"))
                         continue
 
                     # 기존에 있는 닉네임이나 등록되어 있는 MAC 이라면 예외처리를 해주어야 함
-                    if not self.dbh.check_nickname(self.nickname, additional_data[0]):
-                        self.client_sock.send(make_message("NICKNAME_FAIL"))
+                    # 람다 함수를 통해 클라이언트에게 메시지를 보낼 수 있음
+                    if not self.dbh.check_nickname(
+                            self.nickname, additional_data[0],
+                            additional_data[1],
+                            lambda msg: self.client_sock.send(make_message(msg))):
                         continue
 
                     # 닉네임을 MAC 주소와 함께 데이터베이스에 저장
@@ -135,6 +138,7 @@ class ThreadHandler(threading.Thread):
                 self.client_sock.send(make_message("RECV_MUSIC_FAIL"))
 
             self.client_sock.send(make_message("MUSIC_INFO_OK"))
+            print "[%s][%s] Success to receive music info" % (ctime(), self.nickname)
 
         else:
             self.client_sock.send(make_message("RECV_MUSIC_FAIL"))
@@ -149,10 +153,10 @@ class ThreadHandler(threading.Thread):
 
             self.client_sock.send(make_message("ALBUM_IMG_DONE"))
             self.img_disc.close()
-        except IOError as e:
+        except AttributeError as e:
             print "[%s][%s] %s" % (ctime(), self.nickname, e)
 
-        print "[%s][%s] Complete to receive album image" % (ctime(), self.nickname)
+        print "[%s][%s] Success to receive album image" % (ctime(), self.nickname)
 
         try:
             music_data = self.client_sock.recv(BUFSIZE)
@@ -163,10 +167,10 @@ class ThreadHandler(threading.Thread):
 
             self.client_sock.send(make_message("MUSIC_DATA_DONE"))
             self.music_disc.close()
-        except IOError as e:
+        except AttributeError as e:
             print "[%s][%s] %s" % (ctime(), self.nickname, e)
 
-        print "[%s][%s] Complete to receive music file" % (ctime(), self.nickname)
+        print "[%s][%s] Success to receive music file" % (ctime(), self.nickname)
 
 
 def make_message(msg):

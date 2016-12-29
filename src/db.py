@@ -46,33 +46,46 @@ class DBHandler:
         이미 json 형태로 전달되기 때문에 따로 변환처리 할 필요가 없음
         :return 파일 디스크립터를 생성하기 위해 가각 음악 파일, 이미지 파일의 경로를 반환함
         """
-        json_data = json.loads(json_data)
-        # json_data = {"album": "ds", "playtime": "fd", "singer": "sdf", "name": "sd"}
+
+        try:
+            data = json.loads(json_data)
+        except ValueError:
+            print "[%s][%s] JSON format is invalid" % (ctime(), nickname)
+            return '', ''
+        except UnicodeDecodeError:
+            print 'fuc you'
+            data = json.loads(json_data, encoding="cp1252")
+
+        print data
+        # data = {"album": "안녕", "playtime": "fd", "singer": "sdf", "name": "sd"}
 
         mac = self.get_mac(nickname)
         if not mac:
             print "[%s][%s] There is no device registered" % (ctime(), nickname)
+            return '', ''
 
-        #
+        # 가장 나중에 등록한 music ID를 얻어와 음악 및 앨범 파일 앞에 붙임
+        # 음악을 재생할 때 순서를 편리하게 설정하기 위해서 하였음
+        # 만약 함수의 리턴값이 아무것도 없다면 기존에 등록된 음악이 없다고 가정하고 1부터 시작함
         music_id = self.get_last_id_from_music(nickname)
         if not music_id:
             music_id = 1
 
         # 음악 및 앨범 파일 경로 지정
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
-        music_file_route = '{0}/music/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, json_data['name'])
-        album_file_route = '{0}/album/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, json_data['name'])
+        music_file_route = '{0}/music/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, data['name'])
+        album_file_route = '{0}/album/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, data['name'])
 
         try:
             cur = self.conn.cursor()
             insert_sql = "insert into music " \
                          "(device_mac, music_name, music_singer, music_album, " \
                          "music_playtime, music_file_route" \
-                         ", music_album_image_route, music_json_data)" \
+                         ", music_album_image_route, music_data)" \
                          "values (?, ?, ?, ?, ?, ?, ?, ?)"
-            cur.execute(insert_sql, (mac, json_data['name'], json_data['singer'], json_data['album'],
-                                     json_data['playtime'], music_file_route,
-                                     album_file_route, str(json_data)))
+            cur.execute(insert_sql, (mac, data['name'], data['singer'], data['album'],
+                                     data['playtime'], music_file_route,
+                                     album_file_route, str(data)))
 
         except sqlite3.Error as e:
             print "[%s][%s] %s" % (ctime(), nickname, e)
@@ -106,18 +119,35 @@ class DBHandler:
         self.conn.commit()
         return True
 
-    def check_nickname(self, ip, nickname):
+    def check_nickname(self, ip, nickname, mac, send_msg):
         """
         :param ip: 닉네임이 서버에 적용되기 전의 디폴트 값
         :param nickname: 변경하고자 하는 닉네임
+        :param mac: 중복된 닉네임이 이전에 등록되었던 디바이스인지 확인하기 위해서 사용
+        :param send_msg: 메시지를 보내는 람다 함수를 인자로 받음
         :return: 등록하려는 닉네임이 중복되는게 없다면 True 리턴. 있으면 False.
         """
         cur = self.conn.cursor()
         select_sql = "select * from device where device_nickname = ?"
         cur.execute(select_sql, (nickname, ))
-        if cur.fetchall():
-            print "[%s][%s] It already exists." % (ctime(), ip)
+        fetch = cur.fetchone()
+
+        # 중복되는 닉네임이 있는지 검사
+        if fetch:
+            # 이전에 접속했던 디바이스가 다시 등록하는 것이라면
+            if fetch[0] == mac:
+                return True
+                # send_msg("NICKNAME_OK")
+
+            # 닉네임을 요청한 디바이스의 맥주소와
+            # 겹치는 닉네임을 가지고 있는 디바이스의 맥주소가 다르다면
+            else:
+                print "[%s][%s] It already exists." % (ctime(), ip)
+                send_msg("NICKNAME_FAIL")
+
             return False
+
+        # 중복되는 닉네임이 없으면 OK
         return True
 
     def modify_device(self, old, new):
@@ -143,8 +173,13 @@ class DBHandler:
         try:
             cur = self.conn.cursor()
             select_sql = "select device_mac from device where device_nickname = ?"
+            # 닉네임이 등록되어 있지 않으면 오류 발생
             cur.execute(select_sql, (nick, ))
-            return cur.fetchone()[0]
+            try:
+                return cur.fetchone()[0]
+            except TypeError as e:
+                print "[%s][%s] %s" % (ctime(), nick, e)
+                return False
 
         except sqlite3.Error as e:
             print "[%s][%s] %s" % (ctime(), nick, e)
