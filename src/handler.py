@@ -70,15 +70,14 @@ class ThreadHandler(threading.Thread):
                     # 기존에 있는 닉네임이나 등록되어 있는 MAC 이라면 예외처리를 해주어야 함
                     # 람다 함수를 통해 클라이언트에게 메시지를 보낼 수 있음
                     if not self.dbh.check_nickname(
-                            self.nickname, additional_data[0],
-                            additional_data[1]):
+                            self.nickname, additional_data[0], ":".join(additional_data[1:])):
                         self.client_sock.send(make_message("NICKNAME_FAIL"))
                         continue
 
                     # 닉네임을 MAC 주소와 함께 데이터베이스에 저장
                     # insert or replace 를 하기 때문에 기본키가 중복되더라도
                     # 새로운 닉네임을 덮어씌움
-                    if self.dbh.register_device(additional_data[0], additional_data[1]):
+                    if self.dbh.register_device(additional_data[0], ":".join(additional_data[1:])):
                         self.nickname = additional_data[0]
                         self.client_sock.send(make_message("NICKNAME_OK"))
                     else:
@@ -138,6 +137,7 @@ class ThreadHandler(threading.Thread):
                 print_error_line()
                 print "[%s][%s] %s" % (ctime(), self.nickname, e)
                 self.client_sock.send(make_message("RECV_MUSIC_FAIL"))
+                return False
 
             self.client_sock.send(make_message("MUSIC_INFO_OK"))
             print "[%s][%s] Success to receive music info" % (ctime(), self.nickname)
@@ -152,11 +152,19 @@ class ThreadHandler(threading.Thread):
                 self.img_disc.write(album_data)
                 self.client_sock.send(make_message("ALBUM_IMG_OK"))
                 album_data = self.client_sock.recv(BUFSIZE)
+                print album_data
 
-            self.client_sock.send(make_message("ALBUM_IMG_DONE"))
+                # 도대체 왜 비교 연산자로 /SEND_ALBUM_COMPLETE: 메시지를
+                # 받지 못하는건지 모르겠다
+                if len(album_data) != BUFSIZE:
+                    print 'wtf'
+                    self.client_sock.send(make_message("ALBUM_IMG_DONE"))
+                    break
+
             self.img_disc.close()
         except AttributeError as e:
             print "[%s][%s] %s" % (ctime(), self.nickname, e)
+            return False
 
         print "[%s][%s] Success to receive album image" % (ctime(), self.nickname)
 
@@ -166,11 +174,14 @@ class ThreadHandler(threading.Thread):
                 self.music_disc.write(music_data)
                 self.client_sock.send(make_message("MUSIC_DATA_OK"))
                 music_data = self.client_sock.recv(BUFSIZE)
+                if len(music_data) != BUFSIZE:
+                    self.client_sock.send(make_message("MUSIC_DATA_DONE"))
+                    break
 
-            self.client_sock.send(make_message("MUSIC_DATA_DONE"))
             self.music_disc.close()
         except AttributeError as e:
             print "[%s][%s] %s" % (ctime(), self.nickname, e)
+            return False
 
         print "[%s][%s] Success to receive music file" % (ctime(), self.nickname)
 

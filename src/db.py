@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from time import ctime
+import memcache
 
 DB_PATH = os.getcwd() + '/res'
 
@@ -30,6 +31,7 @@ class DBHandler:
         """
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self.mc = memcache.Client(['127.0.0.1:11211'], debug=0)
 
     def __del__(self):
         """
@@ -52,12 +54,7 @@ class DBHandler:
         except ValueError:
             print "[%s][%s] JSON format is invalid" % (ctime(), nickname)
             return '', ''
-        except UnicodeDecodeError:
-            print 'fuc you'
-            data = json.loads(json_data, encoding="cp1252")
 
-        print data
-        print type(data)
         # data = {"album": "안녕", "playtime": "fd", "singer": "sdf", "name": "sd"}
 
         mac = self.get_mac(nickname)
@@ -69,13 +66,11 @@ class DBHandler:
         # 음악을 재생할 때 순서를 편리하게 설정하기 위해서 하였음
         # 만약 함수의 리턴값이 아무것도 없다면 기존에 등록된 음악이 없다고 가정하고 1부터 시작함
         music_id = self.get_last_id_from_music(nickname)
-        if not music_id:
-            music_id = 1
 
         # 음악 및 앨범 파일 경로 지정
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
-        music_file_route = '{0}/music/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, data['name'])
-        album_file_route = '{0}/album/{1}_{2}_{3}'.format(DB_PATH, music_id, mac, data['name'])
+        music_file_route = '{0}/music/{1}_{2}'.format(DB_PATH, music_id, mac)
+        album_file_route = '{0}/album/{1}_{2}'.format(DB_PATH, music_id, mac)
 
         try:
             cur = self.conn.cursor()
@@ -137,7 +132,7 @@ class DBHandler:
         if fetch:
             # 이전에 접속했던 디바이스가 다시 등록하는 것이라면
             if fetch[0] == mac:
-                return True
+                    return True
                 # send_msg("NICKNAME_OK")
 
             # 닉네임을 요청한 디바이스의 맥주소와
@@ -193,15 +188,28 @@ class DBHandler:
     def get_last_id_from_music(self, nickname):
         try:
             cur = self.conn.cursor()
-            select_sql = "select seq from sqlite_sequence where name='music'"
+            select_sql = "select music_id from music where music_id = (select max(music_id) from music)"
             cur.execute(select_sql)
 
         except sqlite3.Error as e:
             print "[%s][%s] %s" % (ctime(), nickname, e)
             print_error_line()
-            return 1
+            return False
 
-        return cur.fetchone()[0]
+        except TypeError:
+            return None
+
+        # cur.fetchone() 을 하면 다음에 다시 할 때 인덱스가 이동함
+        # 그래서 변수에 저장하여 사용해야 함
+        music_id = 1
+        try:
+            music_id = cur.fetchone()[0]
+        # 만약 music 테이블에 아무 데이터도 없다면 그대로 1 return
+        except TypeError:
+            return music_id
+
+        # 정상적으로 값을 얻어왔다면 music_id return
+        return music_id
 
 
 def print_error_line():
