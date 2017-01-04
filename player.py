@@ -96,7 +96,8 @@ class MusicPlayer:
                 self.update_queue()
                 continue
 
-            self.mc.set("now_play", song)  # 현재 재생 중인 음악
+            # 현재 재생 중인 음악
+            self.mc.set("now_play", os.path.split(song)[1].split("_")[0])
             try:
                 pygame.mixer.music.load(song)
             except pygame.error:
@@ -110,6 +111,7 @@ class MusicPlayer:
                             int(pygame.mixer.music.get_pos()) / 1000)
                 # 1초마다 재생 중인 음악의 재생 시간 업데이트
                 time.sleep(1)
+                print int(pygame.mixer.music.get_pos()) / 1000
 
             # 음악이 모두 플레이되었다면 삭제
             os.remove(song)

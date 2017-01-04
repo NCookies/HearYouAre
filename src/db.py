@@ -81,7 +81,7 @@ class DBHandler:
                          "values (?, ?, ?, ?, ?, ?, ?, ?)"
             cur.execute(insert_sql, (mac, data['name'], data['singer'], data['album'],
                                      data['playtime'], music_file_route,
-                                     album_file_route, str(data)))
+                                     album_file_route, json_data))
 
         except sqlite3.Error as e:
             print "[%s][%s] %s" % (ctime(), nickname, e)
@@ -146,26 +146,12 @@ class DBHandler:
         # 중복되는 닉네임이 없으면 OK
         return True
 
-    def modify_device(self, old, new):
-        """
-        DB에서 닉네임 수정
-        :param old: 기존 닉네임
-        :param new: 새로운 닉네임
-        """
-        try:
-            cur = self.conn.cursor()
-            update_sql = "update device set device_nickname = ? where device_nickname = ?"
-            cur.execute(update_sql, (new, old))
-
-        except sqlite3.Error as e:
-            print "[%s][%s] %s" % (ctime(), old, e)
-            print_error_line()
-            return False
-
-        self.conn.commit()
-        return True
-
     def get_mac(self, nick):
+        """
+        맥 주소를 얻기 위한 함수
+        :param nick: 닉네임을 이용하여 맥 주소를 얻음
+        :return:
+        """
         try:
             cur = self.conn.cursor()
             select_sql = "select device_mac from device where device_nickname = ?"
@@ -183,9 +169,57 @@ class DBHandler:
             return False
 
     def get_music_list(self):
-        pass
+        """
+        음악 리스트를 json 형태로 가져옴
+        여기서 오류가 나지 않기 위해서는 DB에 정상적인 형태의 json이 들어가 있어야 함
+        :return: 예약 리스트와 재생 중인 음악의 정보를 담고 있는 JSON Object 리턴
+        """
+        try:
+            cur = self.conn.cursor()
+            select_sql = "select music_json_data from music where music_id >= 1"
+            cur.execute(select_sql)#, (self.get_now_play(), ))
+
+        except sqlite3.Error as e:
+            print "[%s] %s" % (ctime(), e)
+            print_error_line()
+            return False
+
+        # JSON 객체를 만들기 위한 dictionary
+        data = {
+            'music_list': [
+
+            ],
+            'playing_music': [
+                {
+                    'music_id': '',
+                    'play_time': ''
+                }
+            ]
+        }
+        for row in cur.fetchall():
+            # print row[0]
+            data['music_list'].append(json.loads(row[0]))
+
+        data['playing_music'][0]['music_id'] = self.mc.get("now_play")
+        data['playing_music'][0]['play_time'] = self.mc.get("play_time")
+
+        print json.dumps(data, indent=4)
+        print type(json.dumps(data, indent=4))
+        return json.dumps(data)
+
+    def get_now_play(self):
+        """
+        현재 재생 중인 음악의 ID를 memcache 를 통해 얻어옴
+        :return: 현재 재생 중인 음악 ID
+        """
+        return int(self.mc.get("now_play"))
 
     def get_last_id_from_music(self, nickname):
+        """
+        음악 ID의 가장 마지막 인덱스를 가져옴
+        :param nickname: 닉네임을 이용하여 select 문 실행
+        :return:
+        """
         try:
             cur = self.conn.cursor()
             select_sql = "select music_id from music where music_id = (select max(music_id) from music)"
@@ -213,6 +247,10 @@ class DBHandler:
 
 
 def print_error_line():
+    """
+    에러가 발생한 라인 출력
+    :return:
+    """
     print 'Error on line {}'.format(sys.exc_info()[-1].tb_lineno)
 
 a = {

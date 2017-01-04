@@ -58,8 +58,25 @@ class ThreadHandler(threading.Thread):
                     self.file_transfer_handler()
 
                 elif cmd == "/FIRST_REQ":
-                    # 음악 예약 리스트를 보내야 함
+                    # JSON 형태로 음악 예약 리스트를 보내야 함
+
+                    # DB 에서 JSON 형태의 데이터를 가져옴
+                    json_data = self.dbh.get_music_list()
+
+                    # 1024 씩 끊어서 전송
+                    while len(json_data) > 0:
+                        self.client_sock.send(json_data[:1024])
+
+                        msg = self.client_sock.recv(BUFSIZE).split(":")[0]
+                        if msg != "/FIRST_REQ":
+                            self.client_sock.send(make_message("FAIL_RES"))
+                            break
+                        json_data = json_data[1024:]
+
+                    # JSON 데이터의 모드 전송이 끝났음을 알림
                     self.client_sock.send(make_message("FIRST_RES"))
+
+                    # 앨범 파일 요청이 들어왔을 때 응답...
 
                 elif cmd == "/REGISTER_NICKNAME":
                     # 리스트에 인자가 제대로 전달되었는지 확인
@@ -78,20 +95,6 @@ class ThreadHandler(threading.Thread):
                     # insert or replace 를 하기 때문에 기본키가 중복되더라도
                     # 새로운 닉네임을 덮어씌움
                     if self.dbh.register_device(additional_data[0], ":".join(additional_data[1:])):
-                        self.nickname = additional_data[0]
-                        self.client_sock.send(make_message("NICKNAME_OK"))
-                    else:
-                        self.client_sock.send(make_message("NICKNAME_FAIL"))
-
-                elif cmd == "/MODIFY_NICKNAME":
-                    # 리스트에 인자가 제대로 전달되었는지 확인
-                    if len(additional_data) != 1:
-                        print "[%s][%s] Invalid Arguments" % (ctime(), self.nickname)
-                        self.client_sock.send(make_message("NICKNAME_FAIL"))
-                        continue
-
-                    # 닉네임 수정
-                    if self.dbh.modify_device(self.nickname, additional_data[0]):
                         self.nickname = additional_data[0]
                         self.client_sock.send(make_message("NICKNAME_OK"))
                     else:
