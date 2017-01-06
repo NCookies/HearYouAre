@@ -95,6 +95,7 @@ class ThreadHandler(threading.Thread):
                     # 새로운 닉네임을 덮어씌움
                     if self.dbh.register_device(additional_data[0], ":".join(additional_data[1:])):
                         self.nickname = additional_data[0]
+                        self.dbh.set_nickname(self.nickname)
                         self.client_sock.send(make_message("NICKNAME_OK"))
                     else:
                         self.client_sock.send(make_message("NICKNAME_FAIL"))
@@ -197,7 +198,7 @@ class ThreadHandler(threading.Thread):
             # 음악 파일 정보(곡 이름, 가수, 재생시간 등)
             # 여기서 data[0]은 json 형태의 데이터임 => DB에 넣자
             music_file, image_file = \
-                self.dbh.write_music_data(self.nickname, data)
+                self.dbh.write_music_data(data)
 
             try:
                 self.music_disc = open(music_file, 'wb')

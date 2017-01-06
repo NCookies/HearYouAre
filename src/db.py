@@ -32,6 +32,7 @@ class DBHandler:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.mc = memcache.Client(['127.0.0.1:11211'], debug=0)
+        self.nickname = ''
 
     def __del__(self):
         """
@@ -39,10 +40,12 @@ class DBHandler:
         """
         self.conn.close()
 
-    def write_music_data(self, nickname, json_data):
+    def set_nickname(self, nick):
+        self.nickname = nick
+
+    def write_music_data(self, json_data):
         """
         음악 파일 정보를 DB 에 저장함
-        :param nickname: 파일을 전송한 클라이언트의 닉네임
         :param json_data: 파일 정보가 들어있는 데이터,
         통째로 저장하고 json 파싱해서 저장함,
         이미 json 형태로 전달되기 때문에 따로 변환처리 할 필요가 없음
@@ -52,20 +55,20 @@ class DBHandler:
         try:
             data = json.loads(json_data)
         except ValueError:
-            print "[%s][%s] JSON format is invalid" % (ctime(), nickname)
+            print "[%s][%s] JSON format is invalid" % (ctime(), self.nickname)
             return '', ''
 
         # data = {"album": "안녕", "playtime": "fd", "singer": "sdf", "name": "sd"}
 
-        mac = self.get_mac(nickname)
+        mac = self.get_mac(self.nickname)
         if not mac:
-            print "[%s][%s] There is no device registered" % (ctime(), nickname)
+            print "[%s][%s] There is no device registered" % (ctime(), self.nickname)
             return '', ''
 
         # 가장 나중에 등록한 music ID를 얻어와 음악 및 앨범 파일 앞에 붙임
         # 음악을 재생할 때 순서를 편리하게 설정하기 위해서 하였음
         # 만약 함수의 리턴값이 아무것도 없다면 기존에 등록된 음악이 없다고 가정하고 1부터 시작함
-        music_id = self.get_last_id_from_music(nickname)
+        music_id = self.get_last_id_from_music(self.nickname)
 
         # 음악 및 앨범 파일 경로 지정
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
@@ -85,7 +88,7 @@ class DBHandler:
                                      album_file_route, str(data).replace("'", '"')))
 
         except sqlite3.Error as e:
-            print "[%s][%s] %s" % (ctime(), nickname, e)
+            print "[%s][%s] %s" % (ctime(), self.nickname, e)
             print_error_line()
 
             return '', ''
@@ -95,28 +98,28 @@ class DBHandler:
         # 저장될 음악 파일 경로 + 이름, 파일 디스크립터를 생성하기 위해 사용됨
         return music_file_route, album_file_route
 
-    def register_device(self, nickname, mac):
+    def register_device(self, nick, mac):
         """
         맥주소와 닉네임이 새로운 것이라면 등록
         이미 맥주소가 등록되어 있다면 덮어씌움
-        :param nickname: 닉네임
+        :param nick: 닉네임
         :param mac: 맥주소
         """
         try:
             cur = self.conn.cursor()
             insert_sql = "insert or replace into device (device_mac, device_nickname)" \
                          "values (?, ?)"
-            cur.execute(insert_sql, (mac, nickname))
+            cur.execute(insert_sql, (mac, nick))
 
         except sqlite3.Error as e:
-            print "[%s][%s] %s" % (ctime(), nickname, e)
+            print "[%s][%s] %s" % (ctime(), nick, e)
             print_error_line()
             return False
 
         self.conn.commit()
         return True
 
-    def check_nickname(self, ip, nickname, mac):
+    def check_nickname(self, ip, nick, mac):
         """
         :param ip: 닉네임이 서버에 적용되기 전의 디폴트 값
         :param nickname: 변경하고자 하는 닉네임
@@ -126,7 +129,7 @@ class DBHandler:
         """
         cur = self.conn.cursor()
         select_sql = "select * from device where device_nickname = ?"
-        cur.execute(select_sql, (nickname, ))
+        cur.execute(select_sql, (nick, ))
         fetch = cur.fetchone()
 
         # 중복되는 닉네임이 있는지 검사
@@ -147,7 +150,7 @@ class DBHandler:
         # 중복되는 닉네임이 없으면 OK
         return True
 
-    def get_mac(self, nick):
+    def get_mac(self):
         """
         맥 주소를 얻기 위한 함수
         :param nick: 닉네임을 이용하여 맥 주소를 얻음
@@ -157,15 +160,15 @@ class DBHandler:
             cur = self.conn.cursor()
             select_sql = "select device_mac from device where device_nickname = ?"
             # 닉네임이 등록되어 있지 않으면 오류 발생
-            cur.execute(select_sql, (nick, ))
+            cur.execute(select_sql, (self.nickname, ))
             try:
                 return cur.fetchone()[0]
             except TypeError as e:
-                print "[%s][%s] %s" % (ctime(), nick, e)
+                print "[%s][%s] %s" % (ctime(), self.nickname, e)
                 return False
 
         except sqlite3.Error as e:
-            print "[%s][%s] %s" % (ctime(), nick, e)
+            print "[%s][%s] %s" % (ctime(), self.nickname, e)
             print_error_line()
             return False
 
@@ -177,7 +180,8 @@ class DBHandler:
         """
         try:
             cur = self.conn.cursor()
-            select_sql = "select music_json_data from music where music_id >= ?"
+            select_sql = "select music_id, music_name, music_singer, " \
+                         "music_album, music_playtime from music where music_id >= ?"
 
             # 재생 중인 음악이 없다면 공백 리턴
             if self.get_now_play() == "none":
@@ -206,6 +210,7 @@ class DBHandler:
         music_id = int(self.mc.get("now_play"))
         for row in cur.fetchall():
             print row[0]
+            print type(row[0])
             li = json.loads(row[0])
             li['id'] = str(music_id)
             data['music_list'].append(li)
@@ -245,10 +250,9 @@ class DBHandler:
 
         return cur.fetchall()
 
-    def get_last_id_from_music(self, nickname):
+    def get_last_id_from_music(self):
         """
         음악 ID의 가장 마지막 인덱스를 가져옴
-        :param nickname: 닉네임을 이용하여 select 문 실행
         :return:
         """
         try:
@@ -257,7 +261,7 @@ class DBHandler:
             cur.execute(select_sql)
 
         except sqlite3.Error as e:
-            print "[%s][%s] %s" % (ctime(), nickname, e)
+            print "[%s][%s] %s" % (ctime(), self.nickname, e)
             print_error_line()
             return False
 

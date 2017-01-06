@@ -94,7 +94,7 @@ class MusicPlayer:
                 song = self.dir_path + '/' + self.music_queue.get()
 
                 # 음악 파일 사이즈가 너무 작으면 기다렸다가 다시 재생
-                while os.path.getsize(song) > 500000:
+                while os.path.getsize(song) < 500000:
                     time.sleep(3)
 
                 print song
