@@ -60,7 +60,7 @@ class DBHandler:
 
         # data = {"album": "안녕", "playtime": "fd", "singer": "sdf", "name": "sd"}
 
-        mac = self.get_mac(self.nickname)
+        mac = self.get_mac()
         if not mac:
             print "[%s][%s] There is no device registered" % (ctime(), self.nickname)
             return '', ''
@@ -68,7 +68,7 @@ class DBHandler:
         # 가장 나중에 등록한 music ID를 얻어와 음악 및 앨범 파일 앞에 붙임
         # 음악을 재생할 때 순서를 편리하게 설정하기 위해서 하였음
         # 만약 함수의 리턴값이 아무것도 없다면 기존에 등록된 음악이 없다고 가정하고 1부터 시작함
-        music_id = self.get_last_id_from_music(self.nickname)
+        music_id = self.get_last_id_from_music()
 
         # 음악 및 앨범 파일 경로 지정
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
@@ -122,7 +122,7 @@ class DBHandler:
     def check_nickname(self, ip, nick, mac):
         """
         :param ip: 닉네임이 서버에 적용되기 전의 디폴트 값
-        :param nickname: 변경하고자 하는 닉네임
+        :param nick: 변경하고자 하는 닉네임
         :param mac: 중복된 닉네임이 이전에 등록되었던 디바이스인지 확인하기 위해서 사용
         :param send_msg: 메시지를 보내는 람다 함수를 인자로 받음
         :return: 등록하려는 닉네임이 중복되는게 없다면 True 리턴. 있으면 False.
@@ -208,13 +208,19 @@ class DBHandler:
         # ID 추가함
         print 'damn', self.mc.get("now_play")
         music_id = int(self.mc.get("now_play"))
+
+        # 예시 데이터. select 한 순으로 나옴
+        # (11, u'11:11.mp3', u'\ud0dc\uc5f0 (TAEYEON)', u'11:11', u'223478')
+
         for row in cur.fetchall():
-            print row[0]
-            print type(row[0])
-            li = json.loads(row[0])
-            li['id'] = str(music_id)
-            data['music_list'].append(li)
-            music_id += 1
+            music_arr = {}
+            music_arr['id'] = row[0]
+            music_arr['name'] = row[1]
+            music_arr['singer'] = row[2]
+            music_arr['album'] = row[3]
+            music_arr['playtime'] = row[4]
+            music_arr['nickname'] = self.nickname
+            data['music_list'].append(music_arr)
 
         data['playing_music'][0]['music_id'] = music_id
         data['playing_music'][0]['play_time'] = self.mc.get("play_time")

@@ -108,7 +108,7 @@ class ThreadHandler(threading.Thread):
                     self.client_sock.send(make_message("RECV_MESSAGE_FAIL"))
 
         finally:
-            print "%s is gone" % self.addr[0]
+            print "%s is gone" % self.nickname
             self.client_sock.close()
 
     def check_conn_handler(self):
@@ -136,8 +136,9 @@ class ThreadHandler(threading.Thread):
 
             # 1024 씩 끊어서 전송
             while True:
-                self.client_sock.send(json_data[:1024])
-                json_data = json_data[1024:]
+                print json_data[:BUFSIZE-1]
+                self.client_sock.send(json_data[:BUFSIZE-1] + '\n')
+                json_data = json_data[BUFSIZE-1:]
 
                 if len(json_data) <= 0:
                     break
