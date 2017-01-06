@@ -49,7 +49,12 @@ class ThreadHandler(threading.Thread):
 
                 # 가장 많이 요청될 것으로 생각되는 메시지 순서대로 나열함
                 if cmd == "/CHECK_CONN":
-                    self.check_conn_handler()
+                    last_id = self.dbh.get_last_id_from_music() - 1
+                    if int(additional_data[0]) == last_id:
+                        self.client_sock.send(make_message("CONN_OK"))
+                        continue
+
+                    self.check_conn_handler(additional_data[0])
 
                 elif cmd == "/SEND_MUSIC":
                     # 클라이언트에서 음악 파일을 보내기 시작한다고 메시지를 받음
@@ -70,11 +75,10 @@ class ThreadHandler(threading.Thread):
 
                     # 앨범 파일 요청이 들어왔을 때 응답
                     album_req = self.client_sock.recv(BUFSIZE)
-                    # 어차피 재생 중인 음악의 앨범부터 보낼거니까 상관없기는 한데
-                    # 만약 요청을 한 상태에서 음악이 다음으로 넘어가버리면?? 어케하지?
-                    if album_req != "/REQ_ALBUM":
-                        self.client_sock.send(make_message("FAIL_RES"))
-                    print 'I am here!!'
+                    print album_req
+                    # if album_req != "/REQ_ALBUM:":
+                    #     self.client_sock.send(make_message("FAIL_RES"))
+                    #     continue
                     self.send_album_images()
 
                 elif cmd == "/REGISTER_NICKNAME":
@@ -111,9 +115,15 @@ class ThreadHandler(threading.Thread):
             print "%s is gone" % self.nickname
             self.client_sock.close()
 
-    def check_conn_handler(self):
+    def check_conn_handler(self, client_latest_id):
+        """
+        클라이언트가 가지고 있는 음악이 최신이 아닐 때
+        :return: 몰라 그런거
+        """
         # 음악 예약 리스트를 보내면 클라이언트에서 필요한 앨범 이미지의 ID를 전송함
-        self.send_music_list()
+        # 일단 send부터
+
+        self.send_music_list(require_id=client_latest_id)
 
         # 앨범 파일 요청이 들어왔을 때 응답
         album_req = self.client_sock.recv(BUFSIZE)
@@ -124,11 +134,11 @@ class ThreadHandler(threading.Thread):
         # CHECK_CONN 메시지의 내용에 따라 함수의 인자를 전달함
         self.send_album_images(last_id=last_id)
 
-    def send_music_list(self):
+    def send_music_list(self, require_id=None):
         # JSON 형태로 음악 예약 리스트를 보내야 함
         try:
             # DB 에서 JSON 형태의 데이터를 가져옴
-            json_data = self.dbh.get_music_list()
+            json_data = self.dbh.get_music_list(check_id=require_id)
 
             if len(json_data) <= 0:
                 self.client_sock.send(make_message("{}"))
@@ -136,15 +146,16 @@ class ThreadHandler(threading.Thread):
 
             # 1024 씩 끊어서 전송
             while True:
-                print json_data[:BUFSIZE-1]
                 self.client_sock.send(json_data[:BUFSIZE-1] + '\n')
                 json_data = json_data[BUFSIZE-1:]
 
+                # 여기서 브레이크가 걸리면 메시지를 받지 않게 됨
                 if len(json_data) <= 0:
                     break
 
                 msg = self.client_sock.recv(BUFSIZE).split(":")[0]
-                if msg != "/FIRST_REQ" or msg != "/CHECK_CONN":
+                if msg != "/FIRST_REQ" and msg != "/CHECK_CONN":
+                    print 'fuck you'
                     self.client_sock.send(make_message("FAIL_RES"))
                     break
         except ValueError as e:
@@ -167,20 +178,17 @@ class ThreadHandler(threading.Thread):
         # 앨범 파일들의 path 를 순회함
         for album in albums:
             # 파일 open
-            with open(album, 'rb') as f:
+            with open(album[0], 'rb') as f:
                 # 데이터 읽고
                 data = f.read(BUFSIZE)
                 # 데이터 있으면 루프 돌고
                 while data:
-                    # 데이터 보내고
                     self.client_sock.send(data)
-                    # 받고
                     self.client_sock.recv(BUFSIZE)
-                    # 읽고
                     data = f.read(BUFSIZE)
 
             # 하나의 앨범 이미지의 전송을 완료했음을 알림
-            self.client_sock.send(make_message("COMPLETE:"))  # + albums.index(album))
+            self.client_sock.send(make_message("COMPLETE"))  # + albums.index(album))
 
     def file_transfer_handler(self):
         """

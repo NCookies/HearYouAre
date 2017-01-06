@@ -63,7 +63,6 @@ class MusicPlayer:
         # 기존의 큐와 새로 만든 리스트가 중복되지 않은 값들을 얻어냄
         updates = list()
         for i in range(0, len(file_list)):
-            print i
             try:
                 if music_list[i] in file_list:
                     pass

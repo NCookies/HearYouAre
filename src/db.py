@@ -172,12 +172,16 @@ class DBHandler:
             print_error_line()
             return False
 
-    def get_music_list(self):
+    def get_music_list(self, check_id=None):
         """
         음악 리스트를 json 형태로 가져옴
         여기서 오류가 나지 않기 위해서는 DB에 정상적인 형태의 json이 들어가 있어야 함
         :return: 예약 리스트와 재생 중인 음악의 정보를 담고 있는 JSON Object 리턴
         """
+
+        if check_id is None:
+            check_id = self.get_now_play()
+
         try:
             cur = self.conn.cursor()
             select_sql = "select music_id, music_name, music_singer, " \
@@ -186,7 +190,7 @@ class DBHandler:
             # 재생 중인 음악이 없다면 공백 리턴
             if self.get_now_play() == "none":
                 return ''
-            cur.execute(select_sql, (self.get_now_play(), ))
+            cur.execute(select_sql, (check_id, ))
 
         except sqlite3.Error as e:
             print "[%s] %s" % (ctime(), e)
@@ -205,15 +209,19 @@ class DBHandler:
                 }
             ]
         }
-        # ID 추가함
-        print 'damn', self.mc.get("now_play")
-        music_id = int(self.mc.get("now_play"))
+
+        try:
+            music_id = int(check_id)
+
+        # 재생 중이거나 예약된 음악이 아무것도 없을 때
+        except ValueError:
+            return ''
 
         # 예시 데이터. select 한 순으로 나옴
         # (11, u'11:11.mp3', u'\ud0dc\uc5f0 (TAEYEON)', u'11:11', u'223478')
 
         for row in cur.fetchall():
-            music_arr = {}
+            music_arr = dict()
             music_arr['id'] = row[0]
             music_arr['name'] = row[1]
             music_arr['singer'] = row[2]
@@ -248,7 +256,7 @@ class DBHandler:
         try:
             cur = self.conn.cursor()
             select_sql = "select music_album_image_route from music where music_id >= ?"
-            cur.execute(select_sql, play_now)
+            cur.execute(select_sql, (play_now, ))
         except sqlite3.Error as e:
             print "[%s] %s" % (ctime(), e)
             print_error_line()
