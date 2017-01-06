@@ -49,7 +49,7 @@ class ThreadHandler(threading.Thread):
 
                 # 가장 많이 요청될 것으로 생각되는 메시지 순서대로 나열함
                 if cmd == "/CHECK_CONN":
-                    pass
+                    self.check_conn_handler()
 
                 elif cmd == "/SEND_MUSIC":
                     # 클라이언트에서 음악 파일을 보내기 시작한다고 메시지를 받음
@@ -58,25 +58,24 @@ class ThreadHandler(threading.Thread):
                     self.file_transfer_handler()
 
                 elif cmd == "/FIRST_REQ":
-                    # JSON 형태로 음악 예약 리스트를 보내야 함
+                    check_send_list = self.send_music_list()
 
-                    # DB 에서 JSON 형태의 데이터를 가져옴
-                    json_data = self.dbh.get_music_list()
+                    if check_send_list == 'none':
+                        continue
 
-                    # 1024 씩 끊어서 전송
-                    while len(json_data) > 0:
-                        self.client_sock.send(json_data[:1024])
+                    # 전송 중 이상이 발생했으면 에러 메시지 보내고 다시 루프
+                    elif not check_send_list:
+                        self.client_sock.send(make_message("FAIL_RES"))
+                        continue
 
-                        msg = self.client_sock.recv(BUFSIZE).split(":")[0]
-                        if msg != "/FIRST_REQ":
-                            self.client_sock.send(make_message("FAIL_RES"))
-                            break
-                        json_data = json_data[1024:]
-
-                    # JSON 데이터의 모드 전송이 끝났음을 알림
-                    self.client_sock.send(make_message("FIRST_RES"))
-
-                    # 앨범 파일 요청이 들어왔을 때 응답...
+                    # 앨범 파일 요청이 들어왔을 때 응답
+                    album_req = self.client_sock.recv(BUFSIZE)
+                    # 어차피 재생 중인 음악의 앨범부터 보낼거니까 상관없기는 한데
+                    # 만약 요청을 한 상태에서 음악이 다음으로 넘어가버리면?? 어케하지?
+                    if album_req != "/REQ_ALBUM":
+                        self.client_sock.send(make_message("FAIL_RES"))
+                    print 'I am here!!'
+                    self.send_album_images()
 
                 elif cmd == "/REGISTER_NICKNAME":
                     # 리스트에 인자가 제대로 전달되었는지 확인
@@ -112,7 +111,74 @@ class ThreadHandler(threading.Thread):
             self.client_sock.close()
 
     def check_conn_handler(self):
-        pass
+        # 음악 예약 리스트를 보내면 클라이언트에서 필요한 앨범 이미지의 ID를 전송함
+        self.send_music_list()
+
+        # 앨범 파일 요청이 들어왔을 때 응답
+        album_req = self.client_sock.recv(BUFSIZE)
+        msg, last_id = album_req.split(":")
+        if not (msg == "/REQ_ALBUM"):
+            self.client_sock.send(make_message("FAIL_RES"))
+
+        # CHECK_CONN 메시지의 내용에 따라 함수의 인자를 전달함
+        self.send_album_images(last_id=last_id)
+
+    def send_music_list(self):
+        # JSON 형태로 음악 예약 리스트를 보내야 함
+        try:
+            # DB 에서 JSON 형태의 데이터를 가져옴
+            json_data = self.dbh.get_music_list()
+
+            if len(json_data) <= 0:
+                self.client_sock.send(make_message("{}"))
+                return 'none'
+
+            # 1024 씩 끊어서 전송
+            while True:
+                self.client_sock.send(json_data[:1024])
+                json_data = json_data[1024:]
+
+                if len(json_data) <= 0:
+                    break
+
+                msg = self.client_sock.recv(BUFSIZE).split(":")[0]
+                if msg != "/FIRST_REQ" or msg != "/CHECK_CONN":
+                    self.client_sock.send(make_message("FAIL_RES"))
+                    break
+        except ValueError as e:
+            print "[%s][%s] %s" % (ctime(), self.nickname, e)
+            return False
+
+        return True
+
+    def send_album_images(self, last_id=None):
+        """
+        /FIRST_REQ: last_id 는 자동으로 현재 재생 중인 음악의 ID 가 됨
+        /CHECK_CONN:[ID] last_id = ID
+        :param last_id: 어떤 앨범 이미지들을 보내주어야 할지 결정하는 역할
+        :return:
+        """
+        # last_id가 None 이면 재생 중인 음악의 앨범부터
+        # 명시되어 있다면 그 음악의 앨범부터
+        albums = self.dbh.get_album_routes(play_now=last_id)
+
+        # 앨범 파일들의 path 를 순회함
+        for album in albums:
+            # 파일 open
+            with open(album, 'rb') as f:
+                # 데이터 읽고
+                data = f.read(BUFSIZE)
+                # 데이터 있으면 루프 돌고
+                while data:
+                    # 데이터 보내고
+                    self.client_sock.send(data)
+                    # 받고
+                    self.client_sock.recv(BUFSIZE)
+                    # 읽고
+                    data = f.read(BUFSIZE)
+
+            # 하나의 앨범 이미지의 전송을 완료했음을 알림
+            self.client_sock.send(make_message("COMPLETE:"))  # + albums.index(album))
 
     def file_transfer_handler(self):
         """
@@ -155,12 +221,10 @@ class ThreadHandler(threading.Thread):
                 self.img_disc.write(album_data)
                 self.client_sock.send(make_message("ALBUM_IMG_OK"))
                 album_data = self.client_sock.recv(BUFSIZE)
-                print album_data
 
                 # 도대체 왜 비교 연산자로 /SEND_ALBUM_COMPLETE: 메시지를
                 # 받지 못하는건지 모르겠다
                 if len(album_data) != BUFSIZE:
-                    print 'wtf'
                     self.client_sock.send(make_message("ALBUM_IMG_DONE"))
                     break
 

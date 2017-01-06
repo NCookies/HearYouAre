@@ -12,6 +12,7 @@ import socket
 import sys
 from src import handler
 from time import ctime
+import memcache
 
 try:
     HOST = ''
@@ -29,6 +30,11 @@ def close_socket(sock):
 
 
 if __name__ == "__main__":
+    # 서버 초기 상태. 기본적으로 none 으로 초기화
+    mc = memcache.Client(['127.0.0.1:11211'], debug=0)
+    mc.set("now_play", "none")  # 큐에 음악이 없을 때
+    mc.set("play_time", "none")
+
     # 소켓 객체 생성
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -37,7 +43,7 @@ if __name__ == "__main__":
         # 소켓 연결 대기
         server_sock.listen(1)
         while True:
-            print "waiting for connection..."
+            print "\nwaiting for connection..."
 
             # 클라이언트 연결
             cli_sock, addr = server_sock.accept()

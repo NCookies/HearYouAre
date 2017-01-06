@@ -22,7 +22,11 @@ class MusicPlayer:
         # root/res/music
         self.dir_path = os.getcwd() + music_path
         self.music_queue = Queue.Queue()
+
         self.mc = memcache.Client(['127.0.0.1:11211'], debug=0)
+        self.mc.set("now_play", "none")
+        self.mc.set("play_time", "none")
+
         self.make_list()
 
         try:
@@ -82,11 +86,19 @@ class MusicPlayer:
                 # 이에 대해서는 추후에 다시 알아봐야 할 듯
                 if len(list(self.music_queue.queue)) <= 0:
                     time.sleep(3)
+                    self.mc.set("now_play", "none")  # 큐에 음악이 없을 때
+                    self.mc.set("play_time", "none")
                     self.update_queue()
                     continue
 
                 song = self.dir_path + '/' + self.music_queue.get()
+
+                # 음악 파일 사이즈가 너무 작으면 기다렸다가 다시 재생
+                while os.path.getsize(song) > 500000:
+                    time.sleep(3)
+
                 print song
+
             # 예외 처리 루틴에 들어가지지 않음
             except Queue.Empty:
                 self.mc.set("now_play", "none")  # 큐에 음악이 없을 때
@@ -101,8 +113,11 @@ class MusicPlayer:
             try:
                 pygame.mixer.music.load(song)
             except pygame.error:
+                # 에러가 발생하면 5초동안 기다렸다가 큐 업데이트
+                time.sleep(5)
                 self.update_queue()
             pygame.mixer.music.play()
+            print 'Start to play', song
 
             # 음악이 종료될 때까지 재생
             while pygame.mixer.music.get_busy():
@@ -111,9 +126,9 @@ class MusicPlayer:
                             int(pygame.mixer.music.get_pos()) / 1000)
                 # 1초마다 재생 중인 음악의 재생 시간 업데이트
                 time.sleep(1)
-                print int(pygame.mixer.music.get_pos()) / 1000
 
             # 음악이 모두 플레이되었다면 삭제
+            print 'End playing', song
             os.remove(song)
             # 음악 플레이 큐 업데이트
             self.update_queue()

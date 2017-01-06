@@ -71,6 +71,7 @@ class DBHandler:
         # 맥 주소 + 받음 음악의 이름을 이용하여 설정
         music_file_route = '{0}/music/{1}_{2}'.format(DB_PATH, music_id, mac)
         album_file_route = '{0}/album/{1}_{2}'.format(DB_PATH, music_id, mac)
+        print json_data
 
         try:
             cur = self.conn.cursor()
@@ -81,7 +82,7 @@ class DBHandler:
                          "values (?, ?, ?, ?, ?, ?, ?, ?)"
             cur.execute(insert_sql, (mac, data['name'], data['singer'], data['album'],
                                      data['playtime'], music_file_route,
-                                     album_file_route, json_data))
+                                     album_file_route, str(data).replace("'", '"')))
 
         except sqlite3.Error as e:
             print "[%s][%s] %s" % (ctime(), nickname, e)
@@ -176,8 +177,12 @@ class DBHandler:
         """
         try:
             cur = self.conn.cursor()
-            select_sql = "select music_json_data from music where music_id >= 1"
-            cur.execute(select_sql)#, (self.get_now_play(), ))
+            select_sql = "select music_json_data from music where music_id >= ?"
+
+            # 재생 중인 음악이 없다면 공백 리턴
+            if self.get_now_play() == "none":
+                return ''
+            cur.execute(select_sql, (self.get_now_play(), ))
 
         except sqlite3.Error as e:
             print "[%s] %s" % (ctime(), e)
@@ -196,15 +201,20 @@ class DBHandler:
                 }
             ]
         }
+        # ID 추가함
+        print 'damn', self.mc.get("now_play")
+        music_id = int(self.mc.get("now_play"))
         for row in cur.fetchall():
-            # print row[0]
-            data['music_list'].append(json.loads(row[0]))
+            print row[0]
+            li = json.loads(row[0])
+            li['id'] = str(music_id)
+            data['music_list'].append(li)
+            music_id += 1
 
-        data['playing_music'][0]['music_id'] = self.mc.get("now_play")
+        data['playing_music'][0]['music_id'] = music_id
         data['playing_music'][0]['play_time'] = self.mc.get("play_time")
 
         print json.dumps(data, indent=4)
-        print type(json.dumps(data, indent=4))
         return json.dumps(data)
 
     def get_now_play(self):
@@ -212,7 +222,28 @@ class DBHandler:
         현재 재생 중인 음악의 ID를 memcache 를 통해 얻어옴
         :return: 현재 재생 중인 음악 ID
         """
-        return int(self.mc.get("now_play"))
+        return self.mc.get("now_play")
+
+    def get_album_routes(self, play_now=None):
+        """
+        현재 예약 리스트에 있는 음악 앨범 파일의 경로를 얻어오는 함수
+        절대경로임
+        :return: 앨범 파일들의 path 리턴
+        """
+        # 요청이 /FIRST_REQ 로 들어온 경우
+        if play_now is None:
+            play_now = self.get_now_play()
+
+        try:
+            cur = self.conn.cursor()
+            select_sql = "select music_album_image_route from music where music_id >= ?"
+            cur.execute(select_sql, play_now)
+        except sqlite3.Error as e:
+            print "[%s] %s" % (ctime(), e)
+            print_error_line()
+            return False
+
+        return cur.fetchall()
 
     def get_last_id_from_music(self, nickname):
         """
@@ -237,7 +268,8 @@ class DBHandler:
         # 그래서 변수에 저장하여 사용해야 함
         music_id = 1
         try:
-            music_id = cur.fetchone()[0]
+            # 가장 마지막 아이디에서 +1
+            music_id = int(cur.fetchone()[0]) + 1
         # 만약 music 테이블에 아무 데이터도 없다면 그대로 1 return
         except TypeError:
             return music_id
