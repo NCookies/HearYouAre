@@ -96,8 +96,6 @@ class MusicPlayer:
                 while os.path.getsize(song) < 500000:
                     time.sleep(3)
 
-                print song
-
             # 예외 처리 루틴에 들어가지지 않음
             except Queue.Empty:
                 self.mc.set("now_play", "none")  # 큐에 음악이 없을 때

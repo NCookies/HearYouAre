@@ -49,12 +49,34 @@ class ThreadHandler(threading.Thread):
 
                 # 가장 많이 요청될 것으로 생각되는 메시지 순서대로 나열함
                 if cmd == "/CHECK_CONN":
+                    # 리턴할 때 +1을 해주기 때문에 원래 last id를 얻기 위해서는 -1을 해야함
                     last_id = self.dbh.get_last_id_from_music() - 1
-                    if int(additional_data[0]) == last_id:
-                        self.client_sock.send(make_message("CONN_OK"))
+                    client_last_music_id = int(additional_data[0])
+
+                    # 클라이언트가 가지고 있는 음악이 최신이라면 굳이 업데이트를 하지 않아도 됨
+                    # 또는 재생할 예약된 음악이 없을 경우에는 가장 마지막 ID를 제공한다
+                    # 나중에 CHEKC_CONN 을 했을 떄 사용함으로써 어떤 음악 정보가 없는지 알 수 있다.
+                    # 이는 FIRST_REQ 를 할 떄에도 마찬가지.
+                    if client_last_music_id == last_id:
+                        self.client_sock.send(str(last_id) + '\n')
                         continue
 
-                    self.check_conn_handler(additional_data[0])
+                    # 재생 중인 음악이 없을 때에는 보내줄 것도 없으므로
+                    # 가장 최신 ID나 보내준다.
+                    if self.dbh.get_now_play() == 'none':
+                        self.client_sock.send(str(last_id) + '\n')
+                        continue
+
+                    # 가지고 있는 마지막 ID가 현재 재생 중인 음악의 ID 보다 작다면
+                    # FIRST_REQ 처럼 현재 재생 중인 음악부터 정보를 제공한다.
+                    if client_last_music_id <= int(self.dbh.get_now_play()):
+                        self.send_music_list()
+                        self.client_sock.recv(BUFSIZE)
+                        self.send_album_images()
+
+                    # 예약된 음악의 데이터들이 있더라도
+                    # 최신이 아니라면 데이터와 앨범 이미지를 보내줘야...
+                    self.check_conn_handler(int(additional_data[0]) + 1)
 
                 elif cmd == "/SEND_MUSIC":
                     # 클라이언트에서 음악 파일을 보내기 시작한다고 메시지를 받음
@@ -75,7 +97,6 @@ class ThreadHandler(threading.Thread):
 
                     # 앨범 파일 요청이 들어왔을 때 응답
                     album_req = self.client_sock.recv(BUFSIZE)
-                    print album_req
                     # if album_req != "/REQ_ALBUM:":
                     #     self.client_sock.send(make_message("FAIL_RES"))
                     #     continue
@@ -139,9 +160,10 @@ class ThreadHandler(threading.Thread):
         try:
             # DB 에서 JSON 형태의 데이터를 가져옴
             json_data = self.dbh.get_music_list(check_id=require_id)
+            last_id = int(self.dbh.get_last_id_from_music()) - 1
 
             if len(json_data) <= 0:
-                self.client_sock.send(make_message("{}"))
+                self.client_sock.send(str(last_id) + '\n')
                 return 'none'
 
             # 1024 씩 끊어서 전송
@@ -154,10 +176,10 @@ class ThreadHandler(threading.Thread):
                     break
 
                 msg = self.client_sock.recv(BUFSIZE).split(":")[0]
-                if msg != "/FIRST_REQ" and msg != "/CHECK_CONN":
-                    print 'fuck you'
-                    self.client_sock.send(make_message("FAIL_RES"))
-                    break
+                # if msg != "/FIRST_REQ" and msg != "/CHECK_CONN":
+                #     print 'fuck you'
+                #     self.client_sock.send(make_message("FAIL_RES"))
+                #     break
         except ValueError as e:
             print "[%s][%s] %s" % (ctime(), self.nickname, e)
             return False
